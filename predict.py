@@ -1,7 +1,7 @@
 """
 predict.py — Backend inference module
-Xử lý toàn bộ logic encode, preprocess, predict
-Không phụ thuộc notebook — chỉ cần file best_churn_model.pkl
+Dataset: Banking Customer Churn (trnhuytun/churn-prediction-dataset)
+Target : Exited (0 = ở lại, 1 = rời bỏ)
 """
 
 import numpy as np
@@ -9,76 +9,37 @@ import pandas as pd
 import joblib
 
 # ─────────────────────────────────────────────────────────────
-# ENCODING MAPS
-# LabelEncoder sort theo alphabet — phải khớp chính xác với notebook
+# ENCODING MAPS — LabelEncoder alphabetical sort
+# Banking dataset chỉ có 2 cột categorical: Geography, Gender
 # ─────────────────────────────────────────────────────────────
 ENCODING_MAP = {
-    'gender':           {'Female': 0, 'Male': 1},
-    'Partner':          {'No': 0, 'Yes': 1},
-    'Dependents':       {'No': 0, 'Yes': 1},
-    'PhoneService':     {'No': 0, 'Yes': 1},
-    'MultipleLines':    {'No': 0, 'No phone service': 1, 'Yes': 2},
-    'InternetService':  {'DSL': 0, 'Fiber optic': 1, 'No': 2},
-    'OnlineSecurity':   {'No': 0, 'No internet service': 1, 'Yes': 2},
-    'OnlineBackup':     {'No': 0, 'No internet service': 1, 'Yes': 2},
-    'DeviceProtection': {'No': 0, 'No internet service': 1, 'Yes': 2},
-    'TechSupport':      {'No': 0, 'No internet service': 1, 'Yes': 2},
-    'StreamingTV':      {'No': 0, 'No internet service': 1, 'Yes': 2},
-    'StreamingMovies':  {'No': 0, 'No internet service': 1, 'Yes': 2},
-    'Contract': {
-        'Month-to-month': 0,
-        'One year':        1,
-        'Two year':        2,
-    },
-    'PaperlessBilling': {'No': 0, 'Yes': 1},
-    'PaymentMethod': {
-        'Bank transfer (automatic)': 0,
-        'Credit card (automatic)':   1,
-        'Electronic check':          2,
-        'Mailed check':              3,
-    },
+    'Geography': {'France': 0, 'Germany': 1, 'Spain': 2},
+    'Gender':    {'Female': 0, 'Male': 1},
 }
 
 # Thứ tự features phải khớp 100% với lúc train trong notebook
 FEATURE_ORDER = [
-    'gender', 'SeniorCitizen', 'Partner', 'Dependents',
-    'tenure', 'PhoneService', 'MultipleLines', 'InternetService',
-    'OnlineSecurity', 'OnlineBackup', 'DeviceProtection', 'TechSupport',
-    'StreamingTV', 'StreamingMovies', 'Contract', 'PaperlessBilling',
-    'PaymentMethod', 'MonthlyCharges', 'TotalCharges',
-    'ChargePerTenure', 'NumServices',
+    'CreditScore', 'Geography', 'Gender', 'Age', 'Tenure',
+    'Balance', 'NumOfProducts', 'HasCrCard', 'IsActiveMember',
+    'EstimatedSalary',
+    'BalancePerProduct',   # feature engineering
+    'ZeroBalance',         # feature engineering
 ]
 
-# Các cột dịch vụ dùng để tính NumServices
-SERVICE_COLS = [
-    'PhoneService', 'MultipleLines', 'InternetService',
-    'OnlineSecurity', 'OnlineBackup', 'DeviceProtection',
-    'TechSupport', 'StreamingTV', 'StreamingMovies',
-]
-
-# Nhãn hiển thị tiếng Việt cho từng feature (dùng trong SHAP plot)
+# Nhãn tiếng Việt cho SHAP plot
 FEATURE_LABELS = {
-    'gender':           'Giới tính',
-    'SeniorCitizen':    'Người cao tuổi',
-    'Partner':          'Có đối tác',
-    'Dependents':       'Có người phụ thuộc',
-    'tenure':           'Số tháng sử dụng',
-    'PhoneService':     'Dịch vụ điện thoại',
-    'MultipleLines':    'Nhiều đường dây',
-    'InternetService':  'Dịch vụ Internet',
-    'OnlineSecurity':   'Bảo mật Online',
-    'OnlineBackup':     'Sao lưu Online',
-    'DeviceProtection': 'Bảo vệ thiết bị',
-    'TechSupport':      'Hỗ trợ kỹ thuật',
-    'StreamingTV':      'Xem TV trực tuyến',
-    'StreamingMovies':  'Xem phim trực tuyến',
-    'Contract':         'Loại hợp đồng',
-    'PaperlessBilling': 'Hóa đơn điện tử',
-    'PaymentMethod':    'Phương thức thanh toán',
-    'MonthlyCharges':   'Chi phí hàng tháng ($)',
-    'TotalCharges':     'Tổng chi phí ($)',
-    'ChargePerTenure':  'Chi phí / Tháng sử dụng',
-    'NumServices':      'Số dịch vụ đang dùng',
+    'CreditScore':      'Điểm tín dụng',
+    'Geography':        'Quốc gia',
+    'Gender':           'Giới tính',
+    'Age':              'Tuổi',
+    'Tenure':           'Số năm gắn bó',
+    'Balance':          'Số dư tài khoản ($)',
+    'NumOfProducts':    'Số sản phẩm đang dùng',
+    'HasCrCard':        'Có thẻ tín dụng',
+    'IsActiveMember':   'Thành viên tích cực',
+    'EstimatedSalary':  'Lương ước tính ($)',
+    'BalancePerProduct':'Số dư / Sản phẩm',
+    'ZeroBalance':      'Số dư bằng 0',
 }
 
 
@@ -89,7 +50,7 @@ FEATURE_LABELS = {
 def load_model_bundle(path: str = 'best_churn_model.pkl'):
     """
     Load model + scaler từ file .pkl.
-    File được tạo trong notebook bằng:
+    Tạo trong notebook bằng:
         joblib.dump({'model': best_model, 'scaler': scaler}, 'best_churn_model.pkl')
     """
     bundle = joblib.load(path)
@@ -97,16 +58,15 @@ def load_model_bundle(path: str = 'best_churn_model.pkl'):
 
 
 # ─────────────────────────────────────────────────────────────
-# ENCODE & PREPROCESS
+# ENCODE & FEATURE ENGINEERING
 # ─────────────────────────────────────────────────────────────
 
 def encode_single(customer_raw: dict) -> dict:
     """
-    Encode 1 khách hàng từ raw string labels → số nguyên.
-
-    Input:  {'gender': 'Male', 'Contract': 'Month-to-month', 'tenure': 12, ...}
-    Output: {'gender': 1, 'Contract': 0, 'tenure': 12, ...,
-             'ChargePerTenure': ..., 'NumServices': ...}
+    Encode 1 khách hàng từ raw values → số.
+    Input:  {'Geography': 'France', 'Gender': 'Male', 'Age': 35, ...}
+    Output: {'Geography': 0, 'Gender': 1, 'Age': 35, ...,
+             'BalancePerProduct': ..., 'ZeroBalance': ...}
     """
     encoded = {}
     for key, val in customer_raw.items():
@@ -115,21 +75,18 @@ def encode_single(customer_raw: dict) -> dict:
         else:
             encoded[key] = val
 
-    # Feature engineering — giống hệt notebook
-    tenure  = encoded.get('tenure', 1)
-    monthly = encoded.get('MonthlyCharges', 0)
-    encoded['ChargePerTenure'] = monthly / (tenure + 1)
-    encoded['NumServices']     = sum(encoded.get(c, 0) for c in SERVICE_COLS)
+    # Feature engineering — phải giống hệt notebook
+    balance     = encoded.get('Balance', 0)
+    n_products  = encoded.get('NumOfProducts', 1)
+    encoded['BalancePerProduct'] = balance / (n_products + 1)
+    encoded['ZeroBalance']       = 1 if balance == 0 else 0
 
     return encoded
 
 
 def preprocess_single(customer_raw: dict, scaler):
-    """
-    Encode + scale 1 khách hàng.
-    Trả về (X_scaled: np.ndarray, X_df: DataFrame)
-    """
-    encoded = encode_single(customer_raw)
+    """Encode + scale 1 khách hàng → (X_scaled, X_df)."""
+    encoded  = encode_single(customer_raw)
     X_df     = pd.DataFrame([encoded])[FEATURE_ORDER]
     X_scaled = scaler.transform(X_df)
     return X_scaled, X_df
@@ -137,29 +94,24 @@ def preprocess_single(customer_raw: dict, scaler):
 
 def preprocess_batch(df_raw: pd.DataFrame, scaler):
     """
-    Xử lý DataFrame nhiều khách hàng (cùng cấu trúc Telco CSV).
-    Trả về (X_scaled: np.ndarray, X_df: DataFrame)
+    Xử lý DataFrame nhiều khách hàng (cùng cấu trúc Banking CSV).
+    Trả về (X_scaled, X_df)
     """
     df = df_raw.copy()
 
-    # Fix TotalCharges (có thể là string do khoảng trắng)
-    df['TotalCharges'] = pd.to_numeric(df['TotalCharges'], errors='coerce')
-    df['TotalCharges'] = df['TotalCharges'].fillna(df['TotalCharges'].median())
-
-    # Bỏ cột không cần
-    for col in ['customerID', 'Churn']:
+    # Bỏ cột không dùng
+    for col in ['RowNumber', 'CustomerId', 'Surname', 'Exited']:
         if col in df.columns:
             df = df.drop(columns=[col])
 
-    # Encode tất cả categorical
+    # Encode categorical
     for col, mapping in ENCODING_MAP.items():
         if col in df.columns:
             df[col] = df[col].map(mapping).fillna(0).astype(int)
 
     # Feature engineering
-    df['ChargePerTenure'] = df['MonthlyCharges'] / (df['tenure'] + 1)
-    service_present       = [c for c in SERVICE_COLS if c in df.columns]
-    df['NumServices']     = df[service_present].sum(axis=1)
+    df['BalancePerProduct'] = df['Balance'] / (df['NumOfProducts'] + 1)
+    df['ZeroBalance']       = (df['Balance'] == 0).astype(int)
 
     X_df     = df[FEATURE_ORDER]
     X_scaled = scaler.transform(X_df)
@@ -173,12 +125,7 @@ def preprocess_batch(df_raw: pd.DataFrame, scaler):
 def predict_single(model, scaler, customer_raw: dict):
     """
     Dự đoán 1 khách hàng.
-
-    Returns:
-        prob    (float)     — xác suất churn [0, 1]
-        label   (str)       — 'CHURN' hoặc 'KHÔNG CHURN'
-        X_scaled (ndarray)  — dữ liệu đã scale
-        X_df    (DataFrame) — dữ liệu đã encode (chưa scale, dùng cho SHAP)
+    Returns: (prob, label, X_scaled, X_df)
     """
     X_scaled, X_df = preprocess_single(customer_raw, scaler)
     prob  = model.predict_proba(X_scaled)[0][1]
@@ -188,10 +135,8 @@ def predict_single(model, scaler, customer_raw: dict):
 
 def predict_batch(model, scaler, df_raw: pd.DataFrame) -> pd.DataFrame:
     """
-    Dự đoán hàng loạt từ DataFrame.
-
-    Returns: DataFrame gốc + cột Churn_Probability, Prediction, Risk_Level
-             đã sắp xếp theo nguy cơ giảm dần.
+    Dự đoán hàng loạt. Trả về DataFrame + cột Churn_Probability,
+    Prediction, Risk_Level, sắp xếp theo nguy cơ giảm dần.
     """
     X_scaled, _ = preprocess_batch(df_raw, scaler)
     probs  = model.predict_proba(X_scaled)[:, 1]
@@ -209,14 +154,11 @@ def predict_batch(model, scaler, df_raw: pd.DataFrame) -> pd.DataFrame:
 
 
 # ─────────────────────────────────────────────────────────────
-# HELPER
+# HELPERS
 # ─────────────────────────────────────────────────────────────
 
 def get_risk_level(prob: float) -> tuple:
-    """
-    Trả về (emoji, label, màu hex) tương ứng với xác suất.
-    Dùng để render badge và màu sắc trong UI.
-    """
+    """Trả về (emoji, label, màu hex) theo xác suất."""
     if prob >= 0.7:
         return '🔴', 'Nguy cơ CAO', '#E8593C'
     elif prob >= 0.4:
@@ -226,5 +168,5 @@ def get_risk_level(prob: float) -> tuple:
 
 
 def get_vi_feature_names(feature_list: list) -> list:
-    """Chuyển feature names sang tiếng Việt để hiển thị trong SHAP plot."""
+    """Chuyển tên feature sang tiếng Việt cho SHAP plot."""
     return [FEATURE_LABELS.get(f, f) for f in feature_list]
