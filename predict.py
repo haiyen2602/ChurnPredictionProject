@@ -1,172 +1,69 @@
-"""
-predict.py — Backend inference module
-Dataset: Banking Customer Churn (trnhuytun/churn-prediction-dataset)
-Target : Exited (0 = ở lại, 1 = rời bỏ)
-"""
-
 import numpy as np
 import pandas as pd
 import joblib
 
-# ─────────────────────────────────────────────────────────────
-# ENCODING MAPS — LabelEncoder alphabetical sort
-# Banking dataset chỉ có 2 cột categorical: Geography, Gender
-# ─────────────────────────────────────────────────────────────
-ENCODING_MAP = {
-    'Geography': {'France': 0, 'Germany': 1, 'Spain': 2},
-    'Gender':    {'Female': 0, 'Male': 1},
-}
-
-# Thứ tự features phải khớp 100% với lúc train trong notebook
+# 28 features chính xác được bóc tách từ object XGBoost của bạn
 FEATURE_ORDER = [
-    'CreditScore', 'Geography', 'Gender', 'Age', 'Tenure',
-    'Balance', 'NumOfProducts', 'HasCrCard', 'IsActiveMember',
-    'EstimatedSalary',
-    'BalancePerProduct',   # feature engineering
-    'ZeroBalance',         # feature engineering
+    'Client_gender', 'Age', 'Staff_VIB', 'Tenure', 'SMS',
+    'Verify_method', 'EB_register_channel', 'No_Activity_Name',
+    'Type_Transactions', 'Total_trans_no', 'Avg_Trans_no_month',
+    'Avg_Trans_Amount', 'Max_Trans_Amount', 'Min_Trans_Amount',
+    'No_CurrentAccount', 'Avg_CurrentAccount_Balance',
+    'Max_CurrentAccount_Balance', 'Min_CurrentAccount_Balance',
+    'No_TermDeposit', 'Avg_TermDeposit_Balance',
+    'Max_TermDeposit_Balance', 'Min_TermDeposit_Balance',
+    'No_Loan', 'Avg_Loan_Balance', 'Max_Loan_Balance',
+    'Min_Loan_Balance', 'No_CC', 'No_DC'
 ]
 
-# Nhãn tiếng Việt cho SHAP plot
-FEATURE_LABELS = {
-    'CreditScore':      'Điểm tín dụng',
-    'Geography':        'Quốc gia',
-    'Gender':           'Giới tính',
-    'Age':              'Tuổi',
-    'Tenure':           'Số năm gắn bó',
-    'Balance':          'Số dư tài khoản ($)',
-    'NumOfProducts':    'Số sản phẩm đang dùng',
-    'HasCrCard':        'Có thẻ tín dụng',
-    'IsActiveMember':   'Thành viên tích cực',
-    'EstimatedSalary':  'Lương ước tính ($)',
-    'BalancePerProduct':'Số dư / Sản phẩm',
-    'ZeroBalance':      'Số dư bằng 0',
-}
-
-
-# ─────────────────────────────────────────────────────────────
-# LOAD MODEL
-# ─────────────────────────────────────────────────────────────
-
-def load_model_bundle(path: str = 'best_churn_model.pkl'):
+def load_model_bundle(path='best_churn_model.pkl'):
     """
-    Load model + scaler từ file .pkl.
-    Tạo trong notebook bằng:
-        joblib.dump({'model': best_model, 'scaler': scaler}, 'best_churn_model.pkl')
+    Do model .pkl hiện tại chỉ chứa object XGBClassifier (không bọc trong dict chứa scaler)
+    nên ta chỉ việc load trực tiếp mô hình.
     """
-    bundle = joblib.load(path)
-    return bundle['model'], bundle['scaler']
+    model = joblib.load(path)
+    return model, None
 
-
-# ─────────────────────────────────────────────────────────────
-# ENCODE & FEATURE ENGINEERING
-# ─────────────────────────────────────────────────────────────
-
-def encode_single(customer_raw: dict) -> dict:
-    """
-    Encode 1 khách hàng từ raw values → số.
-    Input:  {'Geography': 'France', 'Gender': 'Male', 'Age': 35, ...}
-    Output: {'Geography': 0, 'Gender': 1, 'Age': 35, ...,
-             'BalancePerProduct': ..., 'ZeroBalance': ...}
-    """
-    encoded = {}
-    for key, val in customer_raw.items():
-        if key in ENCODING_MAP:
-            encoded[key] = ENCODING_MAP[key].get(str(val), 0)
-        else:
-            encoded[key] = val
-
-    # Feature engineering — phải giống hệt notebook
-    balance     = encoded.get('Balance', 0)
-    n_products  = encoded.get('NumOfProducts', 1)
-    encoded['BalancePerProduct'] = balance / (n_products + 1)
-    encoded['ZeroBalance']       = 1 if balance == 0 else 0
-
-    return encoded
-
-
-def preprocess_single(customer_raw: dict, scaler):
-    """Encode + scale 1 khách hàng → (X_scaled, X_df)."""
-    encoded  = encode_single(customer_raw)
-    X_df     = pd.DataFrame([encoded])[FEATURE_ORDER]
-    X_scaled = scaler.transform(X_df)
-    return X_scaled, X_df
-
-
-def preprocess_batch(df_raw: pd.DataFrame, scaler):
-    """
-    Xử lý DataFrame nhiều khách hàng (cùng cấu trúc Banking CSV).
-    Trả về (X_scaled, X_df)
-    """
+def preprocess_batch(df_raw: pd.DataFrame, scaler=None):
     df = df_raw.copy()
+    
+    # Đảm bảo dataframe có đủ 28 cột, nếu thiếu thì fill 0
+    for col in FEATURE_ORDER:
+        if col not in df.columns:
+            df[col] = 0
+            
+    X_df = df[FEATURE_ORDER].astype(float)
+    return X_df.values, X_df
 
-    # Bỏ cột không dùng
-    for col in ['RowNumber', 'CustomerId', 'Surname', 'Exited']:
-        if col in df.columns:
-            df = df.drop(columns=[col])
-
-    # Encode categorical
-    for col, mapping in ENCODING_MAP.items():
-        if col in df.columns:
-            df[col] = df[col].map(mapping).fillna(0).astype(int)
-
-    # Feature engineering
-    df['BalancePerProduct'] = df['Balance'] / (df['NumOfProducts'] + 1)
-    df['ZeroBalance']       = (df['Balance'] == 0).astype(int)
-
-    X_df     = df[FEATURE_ORDER]
-    X_scaled = scaler.transform(X_df)
-    return X_scaled, X_df
-
-
-# ─────────────────────────────────────────────────────────────
-# PREDICT
-# ─────────────────────────────────────────────────────────────
+def preprocess_single(customer_raw: dict, scaler=None):
+    df = pd.DataFrame([customer_raw])
+    return preprocess_batch(df, scaler)
 
 def predict_single(model, scaler, customer_raw: dict):
-    """
-    Dự đoán 1 khách hàng.
-    Returns: (prob, label, X_scaled, X_df)
-    """
     X_scaled, X_df = preprocess_single(customer_raw, scaler)
-    prob  = model.predict_proba(X_scaled)[0][1]
+    prob = model.predict_proba(X_df)[0][1]
     label = 'CHURN' if prob > 0.5 else 'KHÔNG CHURN'
     return prob, label, X_scaled, X_df
 
-
 def predict_batch(model, scaler, df_raw: pd.DataFrame) -> pd.DataFrame:
-    """
-    Dự đoán hàng loạt. Trả về DataFrame + cột Churn_Probability,
-    Prediction, Risk_Level, sắp xếp theo nguy cơ giảm dần.
-    """
-    X_scaled, _ = preprocess_batch(df_raw, scaler)
-    probs  = model.predict_proba(X_scaled)[:, 1]
+    X_scaled, X_df = preprocess_batch(df_raw, scaler)
+    probs = model.predict_proba(X_df)[:, 1]
     labels = ['CHURN' if p > 0.5 else 'KHÔNG CHURN' for p in probs]
 
     result = df_raw.copy()
     result['Churn_Probability'] = np.round(probs, 4)
-    result['Prediction']        = labels
-    result['Risk_Level']        = pd.cut(
+    result['Prediction'] = labels
+    result['Risk_Level'] = pd.cut(
         probs,
         bins=[0, 0.3, 0.6, 1.0],
         labels=['🟢 Thấp', '🟡 Trung bình', '🔴 Cao'],
     )
     return result.sort_values('Churn_Probability', ascending=False).reset_index(drop=True)
 
-
-# ─────────────────────────────────────────────────────────────
-# HELPERS
-# ─────────────────────────────────────────────────────────────
-
 def get_risk_level(prob: float) -> tuple:
-    """Trả về (emoji, label, màu hex) theo xác suất."""
     if prob >= 0.7:
         return '🔴', 'Nguy cơ CAO', '#E8593C'
     elif prob >= 0.4:
         return '🟡', 'Nguy cơ TRUNG BÌNH', '#f39c12'
     else:
         return '🟢', 'Nguy cơ THẤP', '#1D9E75'
-
-
-def get_vi_feature_names(feature_list: list) -> list:
-    """Chuyển tên feature sang tiếng Việt cho SHAP plot."""
-    return [FEATURE_LABELS.get(f, f) for f in feature_list]
