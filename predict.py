@@ -1,8 +1,8 @@
 """
-predict.py — Backend inference module
+predict.py — Backend inference module (Optimized Version)
 Dataset : VIB Banking Churn (trnhuytun/churn-prediction-dataset)
 Target  : Churn (0 = ở lại, 1 = rời bỏ)
-Note    : Tất cả features ĐÃ là số trong dataset gốc → không cần encode
+Note    : Tất cả features ĐA là số trong dataset gốc → không cần encode
 """
 
 import numpy as np
@@ -10,8 +10,7 @@ import pandas as pd
 import joblib
 
 # ─────────────────────────────────────────────────────────────
-# FEATURE ORDER — phải khớp 100% với scaler.feature_names_in_
-# Lấy từ: list(scaler.feature_names_in_)
+# FEATURE ORDER — phải khớp 100% với thứ tự lúc huấn luyện mô hình
 # ─────────────────────────────────────────────────────────────
 FEATURE_ORDER = [
     'Client_gender',
@@ -70,37 +69,35 @@ DROP_COLS = ['Customer_number', 'Churn']
 # LOAD MODEL
 # ─────────────────────────────────────────────────────────────
 
-def load_model_bundle(path: str = 'best_churn_model.pkl'):
-    """
-    Load model + scaler từ file .pkl.
-    Tạo trong notebook bằng:
-        joblib.dump({'model': best_model, 'scaler': scaler}, 'best_churn_model.pkl')
-    """
-    bundle = joblib.load(path)
-    return bundle['model'], bundle['scaler']
+def load_model_bundle(model_path):
+    # Sửa lỗi cú pháp dấu nháy đơn dư thừa ở tham số đầu vào
+    model = joblib.load(model_path)
+    return model, None
 
 
 # ─────────────────────────────────────────────────────────────
-# PREPROCESS — không cần encode, chỉ cần scale
+# PREPROCESS — Tự động bỏ qua Scale nếu Scaler là None
 # ─────────────────────────────────────────────────────────────
 
 def preprocess_single(customer_dict: dict, scaler):
     """
-    Nhận dict các giá trị số → tạo DataFrame đúng thứ tự → scale.
-    Trả về (X_scaled: ndarray, X_df: DataFrame)
-
-    Input:  {'Client_gender': 1, 'Age': 35, 'Tenure': 5.2, ...}
-    Output: X_scaled (1×28), X_df (1×28 với tên cột)
+    Nhận dict các giá trị số → tạo DataFrame đúng thứ tự.
+    Nếu có scaler sẽ chuẩn hóa, nếu không sẽ giữ nguyên cho mô hình cây (XGBoost).
     """
-    X_df     = pd.DataFrame([customer_dict])[FEATURE_ORDER]
-    X_scaled = scaler.transform(X_df)
+    X_df = pd.DataFrame([customer_dict])[FEATURE_ORDER]
+    
+    # Kiểm tra an toàn: chỉ scale nếu scaler tồn tại
+    if scaler is not None:
+        X_scaled = scaler.transform(X_df)
+    else:
+        X_scaled = X_df
+        
     return X_scaled, X_df
 
 
 def preprocess_batch(df_raw: pd.DataFrame, scaler):
     """
-    Xử lý batch DataFrame từ file CSV.
-    Trả về (X_scaled: ndarray, X_df: DataFrame)
+    Xử lý batch DataFrame từ file CSV cho 14 features tối ưu.
     """
     df = df_raw.copy()
 
@@ -109,8 +106,14 @@ def preprocess_batch(df_raw: pd.DataFrame, scaler):
         if col in df.columns:
             df = df.drop(columns=[col])
 
-    X_df     = df[FEATURE_ORDER]
-    X_scaled = scaler.transform(X_df)
+    X_df = df[FEATURE_ORDER]
+    
+    # Kiểm tra an toàn: chỉ scale nếu scaler tồn tại
+    if scaler is not None:
+        X_scaled = scaler.transform(X_df)
+    else:
+        X_scaled = X_df
+        
     return X_scaled, X_df
 
 
@@ -120,8 +123,7 @@ def preprocess_batch(df_raw: pd.DataFrame, scaler):
 
 def predict_single(model, scaler, customer_dict: dict):
     """
-    Dự đoán 1 khách hàng.
-    Returns: (prob, label, X_scaled, X_df)
+    Dự đoán 1 khách hàng đơn lẻ từ Form.
     """
     X_scaled, X_df = preprocess_single(customer_dict, scaler)
     prob  = model.predict_proba(X_scaled)[0][1]
@@ -131,8 +133,7 @@ def predict_single(model, scaler, customer_dict: dict):
 
 def predict_batch(model, scaler, df_raw: pd.DataFrame) -> pd.DataFrame:
     """
-    Dự đoán hàng loạt từ DataFrame CSV.
-    Trả về DataFrame gốc + cột Churn_Probability, Prediction, Risk_Level.
+    Dự đoán hàng loạt từ file CSV được tải lên hệ thống.
     """
     X_scaled, _ = preprocess_batch(df_raw, scaler)
     probs  = model.predict_proba(X_scaled)[:, 1]
@@ -143,8 +144,9 @@ def predict_batch(model, scaler, df_raw: pd.DataFrame) -> pd.DataFrame:
     result['Prediction']        = labels
     result['Risk_Level']        = pd.cut(
         probs,
-        bins=[0, 0.3, 0.6, 1.0],
+        bins=[0.0, 0.3, 0.6, 1.0],
         labels=['🟢 Thấp', '🟡 Trung bình', '🔴 Cao'],
+        include_lowest=True
     )
     return result.sort_values('Churn_Probability', ascending=False).reset_index(drop=True)
 
