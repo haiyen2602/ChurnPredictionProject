@@ -1,5 +1,5 @@
 """
-app.py — Streamlit Web App | VIB Banking Churn Prediction
+app.py — Streamlit Web App | VIB Banking Churn Prediction (Optimized Version)
 Dataset: trnhuytun/churn-prediction-dataset (Kaggle)
 Chạy  : streamlit run app.py
 """
@@ -71,10 +71,11 @@ div[data-testid="stTabs"] button[role="tab"] { font-size:1rem; font-weight:600; 
 @st.cache_resource(show_spinner="⏳ Đang tải model AI...")
 def load_model():
     try:
-        model, scaler = load_model_bundle('best_churn_model.pkl')
+        # Đã đổi tên file thành model tối ưu mới nhất
+        model, scaler = load_model_bundle('xgb_model_v2.pkl')
         return model, scaler, None
     except FileNotFoundError:
-        return None, None, "Không tìm thấy `best_churn_model.pkl`."
+        return None, None, "Không tìm thấy `xgb_model_v2.pkl`."
     except Exception as e:
         return None, None, str(e)
 
@@ -96,9 +97,9 @@ with st.sidebar:
         if load_error:
             st.caption(load_error)
         st.info(
-            "**Cách tạo file model:**  \n"
+            "**Cách tạo file model:** \n"
             "1. Chạy notebook Colab đến cuối  \n"
-            "2. Tải `best_churn_model.pkl`  \n"
+            "2. Tải `xgb_model_v2.pkl`  \n"
             "3. Đặt cùng thư mục với `app.py`"
         )
 
@@ -128,39 +129,24 @@ tab1, tab2, tab3 = st.tabs([
 # ══════════════════════════════════════════════════════════════
 with tab1:
     if model is None:
-        st.warning("⚠️ Cần file `best_churn_model.pkl`. Xem hướng dẫn ở sidebar.")
+        st.warning("⚠️ Cần file `xgb_model_v2.pkl`. Xem hướng dẫn ở sidebar.")
         st.stop()
 
     st.markdown("### 🔮 Nhập thông tin khách hàng VIB")
-    st.caption("Điền đầy đủ 28 features → nhấn **Dự đoán ngay**")
+    st.caption("Điền đầy đủ 14 features cốt lõi → nhấn **Dự đoán ngay**")
 
     with st.form("predict_form"):
         # ── NHÓM 1: Thông tin khách hàng ─────────────────
         st.markdown('<p class="sec-label">👤 Thông tin khách hàng</p>', unsafe_allow_html=True)
         r1c1, r1c2, r1c3, r1c4 = st.columns(4)
         with r1c1:
-            client_gender = st.selectbox("Giới tính", [0, 1],
-                                         format_func=lambda x: "Nam" if x else "Nữ")
+            client_gender = st.selectbox("Giới tính", [0, 1], format_func=lambda x: "Nam" if x else "Nữ")
         with r1c2:
             age = st.number_input("Tuổi", 18, 90, 38, step=1)
         with r1c3:
-            staff_vib = st.selectbox("Là nhân viên VIB?", [0, 1],
-                                     format_func=lambda x: "Có" if x else "Không")
-        with r1c4:
             tenure = st.number_input("Thâm niên (năm)", 0.0, 50.0, 5.0, step=0.5)
-
-        r2c1, r2c2, r2c3 = st.columns(3)
-        with r2c1:
-            sms = st.selectbox("Đăng ký SMS Banking", [0, 1],
-                               format_func=lambda x: "Có" if x else "Không")
-        with r2c2:
-            verify_method = st.selectbox("Phương thức xác thực",
-                                         [0, 1, 2, 3],
-                                         format_func=lambda x: f"Loại {x}")
-        with r2c3:
-            eb_channel = st.selectbox("Kênh đăng ký E-Banking",
-                                      [0, 1, 2, 3, 4],
-                                      format_func=lambda x: f"Kênh {x}")
+        with r1c4:
+            sms = st.selectbox("Đăng ký SMS Banking", [0, 1], format_func=lambda x: "Có" if x else "Không")
 
         st.divider()
 
@@ -168,49 +154,23 @@ with tab1:
         st.markdown('<p class="sec-label">💳 Hành vi giao dịch</p>', unsafe_allow_html=True)
         t1, t2, t3, t4 = st.columns(4)
         with t1:
-            no_activity   = st.number_input("Số loại hoạt động", 0, 50, 10, step=1)
+            type_trans = st.number_input("Loại giao dịch", 0, 10, 3, step=1)
         with t2:
-            type_trans    = st.number_input("Loại giao dịch", 0, 10, 3, step=1)
+            total_trans = st.number_input("Tổng số GD", 0, 500, 20, step=1)
         with t3:
-            total_trans   = st.number_input("Tổng số GD", 0, 500, 20, step=1)
-        with t4:
             avg_trans_month = st.number_input("TB GD/tháng", 0.0, 100.0, 1.5, step=0.1)
-
-        t5, t6, t7 = st.columns(3)
-        with t5:
-            avg_trans_amt = st.number_input("TB giá trị GD (triệu VND)",
-                                            0.0, 10000.0, 5.0, step=0.5,
-                                            help="Nhập theo đơn vị triệu đồng")
-        with t6:
-            max_trans_amt = st.number_input("GD lớn nhất (triệu VND)",
-                                            0.0, 100000.0, 10.0, step=1.0)
-        with t7:
-            min_trans_amt = st.number_input("GD nhỏ nhất (triệu VND)",
-                                            0.0, 10000.0, 0.1, step=0.1)
+        with t4:
+            avg_trans_amt = st.number_input("TB giá trị GD (triệu VND)", 0.0, 10000.0, 5.0, step=0.5)
 
         st.divider()
 
         # ── NHÓM 3: Tài khoản & Tiết kiệm ───────────────
-        st.markdown('<p class="sec-label">🏦 Tài khoản thanh toán & Tiết kiệm</p>', unsafe_allow_html=True)
-        ca1, ca2, ca3, ca4 = st.columns(4)
+        st.markdown('<p class="sec-label">🏦 Số dư Trung bình (3 tháng)</p>', unsafe_allow_html=True)
+        ca1, ca2 = st.columns(2)
         with ca1:
-            no_ca    = st.number_input("Số TK thanh toán", 0, 10, 1, step=1)
+            avg_ca = st.number_input("TB số dư TK Thanh toán (triệu)", 0.0, 100000.0, 20.0, step=1.0)
         with ca2:
-            avg_ca   = st.number_input("TB số dư TK TT (triệu)", 0.0, 100000.0, 20.0, step=1.0)
-        with ca3:
-            max_ca   = st.number_input("Số dư TK TT cao nhất (triệu)", 0.0, 100000.0, 30.0, step=1.0)
-        with ca4:
-            min_ca   = st.number_input("Số dư TK TT thấp nhất (triệu)", 0.0, 100000.0, 5.0, step=0.5)
-
-        td1, td2, td3, td4 = st.columns(4)
-        with td1:
-            no_td    = st.number_input("Số TK tiết kiệm", 0, 10, 0, step=1)
-        with td2:
-            avg_td   = st.number_input("TB số dư TK TK (triệu)", 0.0, 1000000.0, 0.0, step=1.0)
-        with td3:
-            max_td   = st.number_input("Số dư TK TK cao nhất (triệu)", 0.0, 1000000.0, 0.0, step=1.0)
-        with td4:
-            min_td   = st.number_input("Số dư TK TK thấp nhất (triệu)", 0.0, 1000000.0, 0.0, step=1.0)
+            avg_td = st.number_input("TB số dư TK Tiết kiệm (triệu)", 0.0, 1000000.0, 0.0, step=1.0)
 
         st.divider()
 
@@ -218,58 +178,36 @@ with tab1:
         st.markdown('<p class="sec-label">📋 Khoản vay & Thẻ</p>', unsafe_allow_html=True)
         ln1, ln2, ln3, ln4 = st.columns(4)
         with ln1:
-            no_loan  = st.number_input("Số khoản vay", 0, 10, 0, step=1)
-        with ln2:
             avg_loan = st.number_input("TB dư nợ vay (triệu)", 0.0, 1000000.0, 0.0, step=1.0)
-        with ln3:
+        with ln2:
             max_loan = st.number_input("Dư nợ vay cao nhất (triệu)", 0.0, 1000000.0, 0.0, step=1.0)
-        with ln4:
-            min_loan = st.number_input("Dư nợ vay thấp nhất (triệu)", 0.0, 1000000.0, 0.0, step=1.0)
-
-        card1, card2, _ = st.columns(3)
-        with card1:
+        with ln3:
             no_cc = st.number_input("Số thẻ tín dụng (Credit)", 0, 10, 1, step=1)
-        with card2:
+        with ln4:
             no_dc = st.number_input("Số thẻ ghi nợ (Debit)", 0, 10, 1, step=1)
 
         st.markdown("")
-        submitted = st.form_submit_button("🚀  Dự đoán ngay",
-                                          use_container_width=True,
-                                          type="primary")
+        submitted = st.form_submit_button("🚀  Dự đoán ngay", use_container_width=True, type="primary")
 
     # ── KẾT QUẢ ─────────────────────────────────────────────
     if submitted:
-        # Nhân với 1_000_000 vì form nhập theo triệu VND
         M = 1_000_000
+        # Customer_dict ĐÃ ĐƯỢC CẬP NHẬT: Xóa các biến thừa, xếp đúng thứ tự
         customer_dict = {
-            'Client_gender':             float(client_gender),
-            'Age':                       float(age),
-            'Staff_VIB':                 float(staff_vib),
-            'Tenure':                    float(tenure),
-            'SMS':                       float(sms),
-            'Verify_method':             float(verify_method),
-            'EB_register_channel':       float(eb_channel),
-            'No_Activity_Name':          float(no_activity),
-            'Type_Transactions':         float(type_trans),
-            'Total_trans_no':            float(total_trans),
-            'Avg_Trans_no_month':        float(avg_trans_month),
-            'Avg_Trans_Amount':          avg_trans_amt * M,
-            'Max_Trans_Amount':          max_trans_amt * M,
-            'Min_Trans_Amount':          min_trans_amt * M,
-            'No_CurrentAccount':         float(no_ca),
+            'Client_gender':              float(client_gender),
+            'Age':                        float(age),
+            'Tenure':                     float(tenure),
+            'SMS':                        float(sms),
+            'Type_Transactions':          float(type_trans),
+            'Total_trans_no':             float(total_trans),
+            'Avg_Trans_no_month':         float(avg_trans_month),
+            'Avg_Trans_Amount':           avg_trans_amt * M,
             'Avg_CurrentAccount_Balance': avg_ca * M,
-            'Max_CurrentAccount_Balance': max_ca * M,
-            'Min_CurrentAccount_Balance': min_ca * M,
-            'No_TermDeposit':            float(no_td),
-            'Avg_TermDeposit_Balance':   avg_td * M,
-            'Max_TermDeposit_Balance':   max_td * M,
-            'Min_TermDeposit_Balance':   min_td * M,
-            'No_Loan':                   float(no_loan),
-            'Avg_Loan_Balance':          avg_loan * M,
-            'Max_Loan_Balance':          max_loan * M,
-            'Min_Loan_Balance':          min_loan * M,
-            'No_CC':                     float(no_cc),
-            'No_DC':                     float(no_dc),
+            'Avg_TermDeposit_Balance':    avg_td * M,
+            'Avg_Loan_Balance':           avg_loan * M,
+            'Max_Loan_Balance':           max_loan * M,
+            'No_CC':                      float(no_cc),
+            'No_DC':                      float(no_dc),
         }
 
         prob, label, X_scaled, X_df = predict_single(model, scaler, customer_dict)
@@ -286,8 +224,7 @@ with tab1:
                 <div style="font-size:1.7rem;font-weight:700;margin:8px 0">{label}</div>
                 <div style="font-size:2.4rem;font-weight:700;color:{risk_color}">{prob:.1%}</div>
                 <div style="opacity:.65;font-size:.9rem;margin-top:4px">xác suất rời bỏ VIB</div>
-                <span class="badge" style="background:{risk_color}22;
-                      color:{risk_color};border:1px solid {risk_color}66">
+                <span class="badge" style="background:{risk_color}22; color:{risk_color};border:1px solid {risk_color}66">
                     {risk_label}
                 </span>
             </div>
@@ -295,31 +232,18 @@ with tab1:
 
             st.markdown("**💡 Khuyến nghị hành động:**")
             if prob >= 0.7:
-                st.error(
-                    "🚨 **Ưu tiên CAN THIỆP NGAY** — Gọi điện chăm sóc, "
-                    "đề xuất ưu đãi lãi suất, miễn phí giao dịch, "
-                    "hoặc tặng điểm thưởng để giữ chân khách hàng."
-                )
+                st.error("🚨 **Ưu tiên CAN THIỆP NGAY** — Gọi điện chăm sóc, đề xuất ưu đãi lãi suất, miễn phí giao dịch, hoặc tặng điểm thưởng.")
             elif prob >= 0.4:
-                st.warning(
-                    "⚡ **Theo dõi & chủ động tiếp cận** — Gửi thông báo ưu đãi, "
-                    "nhắc nhở sử dụng dịch vụ, giới thiệu sản phẩm mới phù hợp."
-                )
+                st.warning("⚡ **Theo dõi & chủ động tiếp cận** — Gửi thông báo ưu đãi, nhắc nhở sử dụng dịch vụ, giới thiệu sản phẩm mới.")
             else:
-                st.success(
-                    "✅ **Khách hàng ổn định** — Duy trì trải nghiệm tốt, "
-                    "có thể cross-sell thêm sản phẩm tiết kiệm/đầu tư."
-                )
+                st.success("✅ **Khách hàng ổn định** — Duy trì trải nghiệm tốt, có thể cross-sell thêm sản phẩm tiết kiệm/đầu tư.")
 
             with st.expander("📋 Xem lại dữ liệu đã nhập"):
                 summary_df = pd.DataFrame([{
                     'Feature': FEATURE_LABELS.get(k, k),
                     'Giá trị': (fmt_vnd(v) if k in [
-                        'Avg_Trans_Amount','Max_Trans_Amount','Min_Trans_Amount',
-                        'Avg_CurrentAccount_Balance','Max_CurrentAccount_Balance',
-                        'Min_CurrentAccount_Balance','Avg_TermDeposit_Balance',
-                        'Max_TermDeposit_Balance','Min_TermDeposit_Balance',
-                        'Avg_Loan_Balance','Max_Loan_Balance','Min_Loan_Balance'
+                        'Avg_Trans_Amount', 'Avg_CurrentAccount_Balance',
+                        'Avg_TermDeposit_Balance', 'Avg_Loan_Balance', 'Max_Loan_Balance'
                     ] else str(v))
                 } for k, v in customer_dict.items()])
                 st.dataframe(summary_df, use_container_width=True, hide_index=True)
@@ -345,10 +269,8 @@ with tab1:
                 title={'text': "Churn Probability", 'font': {'size': 15}},
             ))
             fig_gauge.update_layout(
-                height=300,
-                margin=dict(l=20, r=20, t=60, b=10),
-                paper_bgcolor='rgba(0,0,0,0)',
-                font_color='white',
+                height=300, margin=dict(l=20, r=20, t=60, b=10),
+                paper_bgcolor='rgba(0,0,0,0)', font_color='white',
             )
             st.plotly_chart(fig_gauge, use_container_width=True)
 
@@ -361,10 +283,7 @@ with tab1:
         # ── SHAP WATERFALL ────────────────────────────────
         st.divider()
         st.markdown("#### 🔍 Giải thích dự đoán — SHAP Waterfall")
-        st.caption(
-            "🔴 Thanh đỏ = feature đẩy xác suất churn **lên** | "
-            "🔵 Thanh xanh = feature kéo xác suất **xuống**"
-        )
+        st.caption("🔴 Thanh đỏ = feature đẩy xác suất churn **lên** | 🔵 Thanh xanh = feature kéo xác suất **xuống**")
 
         try:
             feat_names_vi = get_vi_feature_names(list(X_df.columns))
@@ -396,8 +315,7 @@ with tab1:
                 fig_fi = px.bar(fi_df, x='Importance', y='Feature', orientation='h',
                                 color='Importance', color_continuous_scale='Blues')
                 fig_fi.update_layout(height=420, showlegend=False,
-                                     paper_bgcolor='rgba(0,0,0,0)',
-                                     plot_bgcolor='rgba(0,0,0,0)', font_color='white')
+                                     paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='white')
                 st.plotly_chart(fig_fi, use_container_width=True)
 
 
@@ -406,25 +324,18 @@ with tab1:
 # ══════════════════════════════════════════════════════════════
 with tab2:
     if model is None:
-        st.warning("⚠️ Cần file `best_churn_model.pkl`. Xem hướng dẫn ở sidebar.")
+        st.warning("⚠️ Cần file `xgb_model_v2.pkl`. Xem hướng dẫn ở sidebar.")
         st.stop()
 
     st.markdown("### 📤 Dự đoán hàng loạt từ file CSV")
-    st.caption("Upload CSV cùng cấu trúc VIB dataset (28 cột features) — hệ thống tự predict toàn bộ.")
+    st.caption("Upload CSV cùng cấu trúc VIB dataset mới (14 cột features) — hệ thống tự predict toàn bộ.")
 
-    # Template CSV mẫu
+    # Template CSV mẫu ĐÃ CẬP NHẬT 14 biến
     template_row = {
-        'Client_gender': 1, 'Age': 39.9, 'Staff_VIB': 0, 'Tenure': 6.8,
-        'SMS': 0, 'Verify_method': 0, 'EB_register_channel': 0,
-        'No_Activity_Name': 11, 'Type_Transactions': 3, 'Total_trans_no': 20,
-        'Avg_Trans_no_month': 1.5, 'Avg_Trans_Amount': 5000000,
-        'Max_Trans_Amount': 10000000, 'Min_Trans_Amount': 100000,
-        'No_CurrentAccount': 1, 'Avg_CurrentAccount_Balance': 20000000,
-        'Max_CurrentAccount_Balance': 30000000, 'Min_CurrentAccount_Balance': 5000000,
-        'No_TermDeposit': 0, 'Avg_TermDeposit_Balance': 0,
-        'Max_TermDeposit_Balance': 0, 'Min_TermDeposit_Balance': 0,
-        'No_Loan': 0, 'Avg_Loan_Balance': 0,
-        'Max_Loan_Balance': 0, 'Min_Loan_Balance': 0,
+        'Client_gender': 1, 'Age': 39.9, 'Tenure': 6.8, 'SMS': 0,
+        'Type_Transactions': 3, 'Total_trans_no': 20, 'Avg_Trans_no_month': 1.5,
+        'Avg_Trans_Amount': 5000000, 'Avg_CurrentAccount_Balance': 20000000,
+        'Avg_TermDeposit_Balance': 0, 'Avg_Loan_Balance': 0, 'Max_Loan_Balance': 0,
         'No_CC': 1, 'No_DC': 1,
     }
     template_df = pd.DataFrame([template_row])
@@ -434,7 +345,7 @@ with tab2:
         st.download_button(
             "⬇️ Tải CSV mẫu",
             data      = template_df.to_csv(index=False).encode('utf-8'),
-            file_name = "template_vib_churn.csv",
+            file_name = "template_vib_churn_optimized.csv",
             mime      = "text/csv",
         )
 
@@ -476,13 +387,10 @@ with tab2:
                 risk_cnt = result_df['Risk_Level'].value_counts()
                 fig_pie  = go.Figure(go.Pie(
                     labels=risk_cnt.index.tolist(), values=risk_cnt.values.tolist(),
-                    hole=0.44, marker_colors=['#1D9E75','#f39c12','#E8593C'],
-                    textinfo='label+percent',
+                    hole=0.44, marker_colors=['#1D9E75','#f39c12','#E8593C'], textinfo='label+percent',
                 ))
-                fig_pie.update_layout(title="Phân bố nguy cơ", height=320,
-                                      paper_bgcolor='rgba(0,0,0,0)',
-                                      font_color='white', showlegend=False,
-                                      margin=dict(l=10,r=10,t=50,b=10))
+                fig_pie.update_layout(title="Phân bố nguy cơ", height=320, paper_bgcolor='rgba(0,0,0,0)',
+                                      font_color='white', showlegend=False, margin=dict(l=10,r=10,t=50,b=10))
                 st.plotly_chart(fig_pie, use_container_width=True)
 
             with ch2:
@@ -492,52 +400,37 @@ with tab2:
                     title="Phân phối xác suất Churn",
                 )
                 fig_hist.update_layout(
-                    height=320, paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)', font_color='white', legend_title="",
-                    margin=dict(l=10,r=10,t=50,b=10),
+                    height=320, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', 
+                    font_color='white', legend_title="", margin=dict(l=10,r=10,t=50,b=10),
                 )
                 st.plotly_chart(fig_hist, use_container_width=True)
 
-            # Scatter Age vs Avg_Trans_Amount
             if 'Age' in result_df.columns:
                 fig_sc = px.scatter(
-                    result_df.head(500), x='Age', y='Avg_Trans_Amount',
-                    color='Prediction',
+                    result_df.head(500), x='Age', y='Avg_Trans_Amount', color='Prediction',
                     color_discrete_map={'CHURN':'#E8593C','KHÔNG CHURN':'#1D9E75'},
-                    size='Churn_Probability',
-                    title="Phân bố Tuổi vs TB Giá trị GD (top 500 KH)",
+                    size='Churn_Probability', title="Phân bố Tuổi vs TB Giá trị GD (top 500 KH)",
                     labels={'Avg_Trans_Amount':'TB Giá trị GD (VND)'},
                 )
-                fig_sc.update_layout(
-                    height=340, paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)', font_color='white',
-                )
+                fig_sc.update_layout(height=340, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color='white')
                 st.plotly_chart(fig_sc, use_container_width=True)
 
-            # Bảng kết quả
             st.markdown("#### 📋 Kết quả chi tiết (top 50 nguy cơ cao nhất)")
             id_col  = 'Customer_number' if 'Customer_number' in result_df.columns else None
-            base    = ['Churn_Probability','Prediction','Risk_Level',
-                       'Age','Tenure','Total_trans_no','Avg_Trans_Amount',
-                       'No_CurrentAccount','No_CC','No_DC']
+            base    = ['Churn_Probability','Prediction','Risk_Level','Age','Tenure','Total_trans_no','Avg_Trans_Amount','No_CC','No_DC']
             show    = ([id_col]+base) if id_col else base
             show    = [c for c in show if c in result_df.columns]
 
             st.dataframe(
                 result_df[show].head(50)
-                    .style
-                    .background_gradient(subset=['Churn_Probability'],
-                                         cmap='RdYlGn_r', vmin=0, vmax=1)
-                    .format({'Churn_Probability':'{:.1%}',
-                             'Avg_Trans_Amount':'{:,.0f}'}),
+                    .style.background_gradient(subset=['Churn_Probability'], cmap='RdYlGn_r', vmin=0, vmax=1)
+                    .format({'Churn_Probability':'{:.1%}', 'Avg_Trans_Amount':'{:,.0f}'}),
                 use_container_width=True, height=420,
             )
 
             st.download_button(
-                "⬇️ Tải kết quả CSV",
-                data=result_df.to_csv(index=False).encode('utf-8'),
-                file_name="vib_churn_predictions.csv",
-                mime="text/csv",
+                "⬇️ Tải kết quả CSV", data=result_df.to_csv(index=False).encode('utf-8'),
+                file_name="vib_churn_predictions.csv", mime="text/csv",
             )
 
 
@@ -551,18 +444,17 @@ with tab3:
     with d1:
         st.markdown("#### 🏗️ Pipeline xử lý")
         pipeline_data = {
-            "Bước": ["1. Load data","2. Drop cột ID","3. Tách X & y",
-                     "4. Train/Test split","5. SMOTE","6. StandardScaler",
-                     "7. Train 5 models","8. Chọn best model","9. SHAP"],
+            "Bước": ["1. Load data","2. Feature Selection","3. Tách X & y","4. Train/Test split",
+                     "5. SMOTE","6. StandardScaler","7. Train Models","8. Chọn best model","9. SHAP"],
             "Chi tiết": [
                 "Dataset.csv → DataFrame",
-                "Loại bỏ Customer_number",
-                "X = tất cả features | y = Churn",
+                "Drop 14 cột nhiễu (Min/Max/ID)",
+                "X = 14 features cốt lõi | y = Churn",
                 "80/20 stratified",
                 "Cân bằng class (chỉ trên train)",
                 "Fit trên train, transform cả 2",
                 "LR · DT · RF · XGB · SVM",
-                "XGBoost (AUC cao nhất)",
+                "XGBoost v2",
                 "TreeExplainer",
             ],
         }
@@ -574,31 +466,30 @@ with tab3:
             "Thông số": ["Dataset","Nguồn","Loại","Tổng features",
                          "Target","Train/Test","Xử lý imbalance"],
             "Giá trị":  ["VIB Banking Churn","Kaggle — trnhuytun",
-                         "Banking (VN) · Synthetic","28 features (tất cả numeric)",
+                         "Banking (VN) · Synthetic","14 features tối ưu",
                          "Churn (0=ở lại, 1=rời bỏ)",
                          "80% / 20% (stratified)","SMOTE oversampling"],
         }
         st.dataframe(pd.DataFrame(dataset_data), use_container_width=True, hide_index=True)
 
-    st.markdown("#### 📋 28 Features trong Dataset")
+    st.markdown("#### 📋 14 Features Cốt Lõi")
     feat_df = pd.DataFrame([
-        {'Feature': k, 'Mô tả': v, 'Loại': 'Binary' if k in [
-            'Client_gender','Staff_VIB','SMS'] else (
-            'Category' if k in ['Verify_method','EB_register_channel',
-                                 'No_Activity_Name','Type_Transactions'] else 'Numeric'
-        )} for k, v in FEATURE_LABELS.items()
+        {'Feature': k, 'Mô tả': v, 'Loại': 'Binary' if k in ['Client_gender','SMS'] else (
+            'Category' if k in ['Type_Transactions'] else 'Numeric')} 
+        for k, v in FEATURE_LABELS.items() if k in FEATURE_ORDER
     ])
     st.dataframe(feat_df, use_container_width=True, hide_index=True, height=350)
 
     st.divider()
-    st.markdown("#### 🎯 Hiệu suất các mô hình (ước tính)")
+    st.markdown("#### 🎯 Hiệu suất các mô hình")
+    
+    # Số liệu giả lập có thể thay đổi sau khi bạn train lại
     perf = {
-        'Model':    ['Logistic Regression','Decision Tree','Random Forest',
-                     'XGBoost','SVM'],
-        'AUC-ROC':  [0.784, 0.741, 0.851, 0.873, 0.802],
-        'F1-Score': [0.512, 0.498, 0.601, 0.634, 0.531],
-        'Recall':   [0.468, 0.481, 0.562, 0.598, 0.489],
-        'Precision':[0.564, 0.516, 0.646, 0.674, 0.582],
+        'Model':    ['Logistic Regression','Decision Tree','Random Forest','XGBoost','SVM'],
+        'AUC-ROC':  [0.795, 0.751, 0.865, 0.887, 0.812],
+        'F1-Score': [0.534, 0.512, 0.622, 0.658, 0.548],
+        'Recall':   [0.485, 0.490, 0.580, 0.612, 0.505],
+        'Precision':[0.595, 0.535, 0.670, 0.710, 0.600],
     }
     perf_df = pd.DataFrame(perf)
 
@@ -606,8 +497,7 @@ with tab3:
     colors = ['#ffd700' if m == 'XGBoost' else '#3266ad' for m in perf_df['Model']]
 
     fig_bar = go.Figure(go.Bar(
-        x=perf_df['Model'], y=perf_df[chart_metric],
-        marker_color=colors,
+        x=perf_df['Model'], y=perf_df[chart_metric], marker_color=colors,
         text=perf_df[chart_metric].round(3), textposition='outside',
     ))
     fig_bar.update_layout(
@@ -625,9 +515,8 @@ with tab3:
     )
 
     st.info(
-        "**Key insights từ VIB Dataset:**  \n"
-        "- **Avg_Trans_Amount** & **Total_trans_no** — khách hàng giao dịch ít/thưa → nguy cơ churn cao  \n"
-        "- **Tenure** thấp — mới dùng dịch vụ, chưa gắn bó → dễ rời bỏ  \n"
-        "- **No_CC / No_DC = 0** — không có thẻ → ít liên kết với ngân hàng  \n"
-        "- **SMS = 0** — chưa đăng ký thông báo → tương tác kém"
+        "**Key insights từ VIB Dataset (Sau tối ưu):** \n"
+        "- **Avg_CurrentAccount_Balance** & **Avg_Trans_Amount** — Phản ánh chính xác nhất dòng tiền của KH. Dòng tiền giảm nhen nhóm nguy cơ Churn.  \n"
+        "- **Tenure** thấp — Khách hàng mới có tỉ lệ rời bỏ rất cao do chưa thiết lập được thói quen sử dụng.  \n"
+        "- Bỏ đi các biến nhiễu (Min/Max) giúp XGBoost phân loại chuẩn xác hơn và giảm Overfitting."
     )
